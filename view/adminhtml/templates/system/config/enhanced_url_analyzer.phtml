@@ -1,0 +1,1057 @@
+<?php
+/**
+ * @var $block \MagoArab\CdnIntegration\Block\Adminhtml\System\Config\EnhancedUrlAnalyzer
+ */
+?>
+<div class="actions actions-analyze-urls">
+    <div class="analyze-buttons" style="margin-bottom: 10px;">
+        <?= $block->getButtonHtml() ?>
+        <?= $block->getAdvancedButtonHtml() ?>
+        <button type="button" id="direct_paste_button" class="action-secondary">
+            <?= __('Paste URLs Directly') ?>
+        </button>
+    </div>
+    
+    <div id="analyze-settings" style="display: none; margin: 10px 0; padding: 10px; background: #f9f9f9; border: 1px solid #e3e3e3;">
+        <div class="field">
+            <label for="store_url">
+                <?= __('Store URL') ?>
+                <span class="required">*</span>
+            </label>
+            <div class="control">
+                <input type="text" id="store_url" value="<?= $block->escapeUrl($block->getStoreUrl()) ?>" 
+                       class="input-text required-entry" style="width: 350px;">
+            </div>
+        </div>
+        <div class="field" id="advanced-settings" style="margin-top: 10px; display: none;">
+            <label for="max_pages">
+                <?= __('Maximum pages to analyze') ?>
+            </label>
+            <div class="control">
+                <input type="number" id="max_pages" value="5" min="1" max="20" class="input-text" style="width: 80px;">
+                <div style="margin-top: 5px; font-size: 12px; color: #666;">
+                    <?= __('More pages will find more URLs but will take longer to complete.') ?>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Direct URL paste area -->
+    <div id="direct-paste-area" style="display: none; margin: 10px 0; padding: 10px; background: #f9f9f9; border: 1px solid #e3e3e3;">
+        <div class="field">
+            <label for="pasted_urls">
+                <?= __('Paste URLs (one per line)') ?>
+                <span class="required">*</span>
+            </label>
+            <div class="control">
+                <textarea id="pasted_urls" class="input-text" rows="10" style="width: 100%;"></textarea>
+            </div>
+        </div>
+        <div style="margin-top: 10px;">
+            <button type="button" id="analyze_pasted_urls" class="action-primary">
+                <?= __('Analyze Pasted URLs') ?>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Bar -->
+<div id="analyzer-progress" style="display: none; margin: 20px 0; padding: 15px; background: #f8f8f8; border: 1px solid #ddd;">
+    <h4 id="progress-title" style="margin-top: 0;"><?= __('Analysis in Progress') ?></h4>
+    <div id="progress-status" style="margin-bottom: 10px; font-weight: bold;">Initializing...</div>
+    
+    <div class="progress" style="height: 24px; background-color: #f5f5f5; border-radius: 4px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0,0,0,.1); margin-bottom: 10px;">
+        <div id="progress-bar" class="progress-bar" style="width: 0%; height: 100%; line-height: 24px; color: #fff; text-align: center; background-color: #5bc0de; transition: width .6s ease;">0%</div>
+    </div>
+    
+    <div id="progress-detail" style="font-size: 13px; color: #666;"></div>
+</div>
+
+<div id="url-analyzer-results" style="display: none; margin-top: 20px;">
+    <div class="results-header" style="padding: 12px 15px; background: #f8f8f8; border: 1px solid #ddd; border-bottom: none;">
+        <h4 style="margin: 0;"><?= __('URLs Found') ?> <span id="url-count"></span></h4>
+        <div id="url-stats" style="margin: 8px 0 12px; font-size: 13px;"></div>
+        <p style="margin: 5px 0 0;"><?= __('Select the URLs you want to serve via CDN:') ?></p>
+        <div class="filter-actions" style="margin-top: 10px;">
+            <input type="text" id="url-filter" placeholder="<?= __('Filter URLs...') ?>" 
+                   style="width: 250px; padding: 5px;">
+            <select id="url-type-filter" style="margin-left: 10px; padding: 5px; min-width: 120px;">
+                <option value="all"><?= __('All Types') ?></option>
+                <option value="js"><?= __('JavaScript (.js)') ?></option>
+                <option value="css"><?= __('CSS (.css)') ?></option>
+                <option value="images"><?= __('Images') ?></option>
+                <option value="fonts"><?= __('Fonts') ?></option>
+                <option value="other"><?= __('Other') ?></option>
+            </select>
+            <div class="filter-status" style="display: inline-block; margin-left: 15px; font-style: italic;"></div>
+        </div>
+    </div>
+    
+    <div class="url-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 0; padding: 15px; background: #fff; border: 1px solid #ddd;"></div>
+    
+    <div class="url-actions" style="margin-top: 0; padding: 12px 15px; background: #f8f8f8; border: 1px solid #ddd; border-top: none;">
+        <button type="button" id="select-all-urls" class="action-secondary"><?= __('Select All') ?></button>
+        <button type="button" id="add-selected-urls" class="action-primary"><?= __('Add Selected URLs') ?></button>
+        <?= $block->getUploadButtonHtml() ?>
+    </div>
+    
+    <div id="upload-progress" style="margin-top: 10px; display: none;">
+        <div class="progress-status" style="margin-bottom: 5px;"></div>
+        <div class="progress-bar-container" style="height: 20px; background-color: #eee; border-radius: 2px;">
+            <div class="progress-bar" style="height: 100%; width: 0; background-color: #5cb85c; border-radius: 2px;"></div>
+        </div>
+    </div>
+    
+    <div id="upload-result" style="margin-top: 10px; display: none;"></div>
+</div>
+
+<script>
+require([
+    'jquery',
+    'Magento_Ui/js/modal/modal',
+    'Magento_Ui/js/modal/confirm',
+    'Magento_Ui/js/modal/alert',
+    'mage/translate'
+], function ($, modal, confirm, alert, $t) {
+    'use strict';
+
+    var isAdvancedAnalysis = false;
+    var progressCheckInterval = null;
+    
+    // Toggle between different analysis modes
+    $('#direct_paste_button').click(function() {
+        $('#analyze-settings').hide();
+        $('#direct-paste-area').show();
+        $('#advanced-settings').hide();
+    });
+    
+    $('#analyze_urls_button').click(function() {
+        $('#direct-paste-area').hide();
+        $('#analyze-settings').show();
+        $('#advanced-settings').hide();
+        isAdvancedAnalysis = false;
+    });
+    
+    $('#advanced_analyze_button').click(function() {
+        $('#direct-paste-area').hide();
+        $('#analyze-settings').show();
+        $('#advanced-settings').show();
+        isAdvancedAnalysis = true;
+    });
+    
+    // Initial state - show analyze settings
+    $('#analyze-settings').show();
+    $('#direct-paste-area').hide();
+    
+    // Prevent form submission when clicking buttons
+    $(document).on('click', '#select-all-urls, #add-selected-urls, #upload-to-github', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+    });
+    
+    // Direct URL paste analysis
+    $('#analyze_pasted_urls').click(function (event) {
+        event.preventDefault();
+        
+        var pastedUrls = $('#pasted_urls').val();
+        
+        if (!pastedUrls) {
+            alert({
+                title: $t('Missing Information'),
+                content: $t('Please paste URLs to analyze.')
+            });
+            return;
+        }
+
+        // Pre-process URLs to handle multi-line pastes with no separator
+        pastedUrls = pastedUrls.replace(/https?:\/\//g, "\nhttps://");
+        pastedUrls = pastedUrls.replace(/^[\n\r]+/, ""); // Remove leading empty lines
+        
+        $(this).prop('disabled', true);
+        $(this).text($t('Analyzing...'));
+        
+        // Reset the results panel
+        resetResults();
+        
+        // Show progress bar
+        showProgressBar($t('Analyzing Pasted URLs'), $t('Processing pasted content...'), 25);
+
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getDirectAnalysisUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                pasted_urls: pastedUrls
+            },
+            showLoader: false,
+            success: function (response) {
+                updateProgress($t('Analysis complete'), 100, response.message || $t('URL analysis completed.'));
+                setTimeout(function() {
+                    handleAnalysisResponse(response);
+                }, 500);
+            },
+            error: function (xhr, status, error) {
+                updateProgress($t('Analysis Failed'), 100, error);
+                alert({
+                    title: $t('Error'),
+                    content: $t('An error occurred while analyzing pasted URLs: ') + error
+                });
+                $('#url-analyzer-results').hide();
+                hideProgressBar();
+            },
+            complete: function () {
+                $('#analyze_pasted_urls').prop('disabled', false);
+                $('#analyze_pasted_urls').text($t('Analyze Pasted URLs'));
+            }
+        });
+    });
+    
+    // Advanced analysis with progress tracking
+    $('#advanced_analyze_button').click(function (event) {
+        if (!$('#analyze-settings').is(':visible')) {
+            $('#analyze-settings').show();
+            $('#advanced-settings').show();
+            return;
+        }
+        
+        event.preventDefault();
+        startAdvancedAnalysis();
+    });
+    
+    // Regular analysis with progress
+    $('#analyze_urls_button').click(function (event) {
+        if (!$('#analyze-settings').is(':visible')) {
+            $('#analyze-settings').show();
+            $('#advanced-settings').hide();
+            return;
+        }
+        
+        event.preventDefault();
+        
+        var storeUrl = $('#store_url').val();
+        if (!storeUrl) {
+            alert({
+                title: $t('Missing Information'),
+                content: $t('Please enter the store URL to analyze.')
+            });
+            return;
+        }
+        
+        $(this).prop('disabled', true);
+        $(this).text($t('Analyzing...'));
+        
+        // Reset the results panel
+        resetResults();
+        
+        // Show progress bar
+        showProgressBar($t('Analyzing Store'), $t('Fetching store content...'), 20);
+        
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getAjaxUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                store_url: storeUrl
+            },
+            showLoader: false,
+            success: function (response) {
+                updateProgress($t('Analysis complete'), 100, response.message || $t('URL analysis completed.'));
+                setTimeout(function() {
+                    handleAnalysisResponse(response);
+                }, 500);
+            },
+            error: function (xhr, status, error) {
+                updateProgress($t('Analysis Failed'), 100, error);
+                alert({
+                    title: $t('Error'),
+                    content: $t('An error occurred while analyzing URLs: ') + error
+                });
+                $('#url-analyzer-results').hide();
+                hideProgressBar();
+            },
+            complete: function () {
+                $('#analyze_urls_button').prop('disabled', false);
+                $('#analyze_urls_button').text($t('Quick Analyze'));
+            }
+        });
+    });
+    
+    function startAdvancedAnalysis() {
+        var storeUrl = $('#store_url').val();
+        var maxPages = $('#max_pages').val();
+        
+        if (!storeUrl) {
+            alert({
+                title: $t('Missing Information'),
+                content: $t('Please enter the store URL to analyze.')
+            });
+            return;
+        }
+        
+        // Disable button
+        $('#advanced_analyze_button').prop('disabled', true);
+        $('#advanced_analyze_button').text($t('Analyzing...'));
+        
+        // Reset the results panel
+        resetResults();
+        
+        // Show progress bar
+        showProgressBar($t('Deep Analysis'), $t('Preparing advanced analysis...'), 5);
+        
+        // Start the analysis
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getAdvancedAjaxUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                store_url: storeUrl,
+                max_pages: maxPages
+            },
+            showLoader: false,
+            success: function (response) {
+                // Start polling for progress
+                startProgressChecking();
+                
+                if (response.success) {
+                    // Initial progress update
+                    if (response.progress) {
+                        updateProgress(
+                            response.progress.status,
+                            response.progress.percent,
+                            response.progress.detail
+                        );
+                    } else {
+                        updateProgress($t('Analysis started'), 10, $t('Initializing analysis process...'));
+                    }
+                } else {
+                    stopProgressChecking();
+                    updateProgress($t('Analysis failed'), 100, response.message);
+                    alert({
+                        title: $t('Error'),
+                        content: response.message
+                    });
+                    $('#url-analyzer-results').hide();
+                    
+                    setTimeout(function() {
+                        hideProgressBar();
+                    }, 1500);
+                    
+                    // Re-enable button
+                    $('#advanced_analyze_button').prop('disabled', false);
+                    $('#advanced_analyze_button').text($t('Deep Analyze (Multiple Pages)'));
+                }
+            },
+            error: function (xhr, status, error) {
+                updateProgress($t('Error'), 100, error);
+                alert({
+                    title: $t('Error'),
+                    content: $t('An error occurred while starting the analysis: ') + error
+                });
+                $('#url-analyzer-results').hide();
+                hideProgressBar();
+                
+                // Re-enable button
+                $('#advanced_analyze_button').prop('disabled', false);
+                $('#advanced_analyze_button').text($t('Deep Analyze (Multiple Pages)'));
+            }
+        });
+    }
+    
+    function startProgressChecking() {
+        // Clear any existing interval
+        stopProgressChecking();
+        
+        // Start new progress checking interval
+        progressCheckInterval = setInterval(checkAnalysisProgress, 1000);
+    }
+    
+    function stopProgressChecking() {
+        if (progressCheckInterval) {
+            clearInterval(progressCheckInterval);
+            progressCheckInterval = null;
+        }
+    }
+    
+    function checkAnalysisProgress() {
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getAdvancedAjaxUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                check_progress: true
+            },
+            showLoader: false,
+            success: function (response) {
+                if (response.success && response.progress) {
+                    updateProgress(
+                        response.progress.status,
+                        response.progress.percent,
+                        response.progress.detail
+                    );
+                    
+                    // If analysis is complete
+                    if (response.progress.percent >= 100 || 
+                        response.progress.status === 'Complete' || 
+                        response.progress.status === 'Error') {
+                        
+                        stopProgressChecking();
+                        
+                        // Re-enable button
+                        $('#advanced_analyze_button').prop('disabled', false);
+                        $('#advanced_analyze_button').text($t('Deep Analyze (Multiple Pages)'));
+                        
+                        // Check if we need to get the results
+                        if (response.progress.status === 'Complete') {
+                            // Fetch the results
+                            getAnalysisResults();
+                        } else if (response.progress.status === 'Error') {
+                            setTimeout(function() {
+                                hideProgressBar();
+                            }, 1500);
+                        }
+                    }
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error('Error checking progress:', error);
+            }
+        });
+    }
+    
+    function getAnalysisResults() {
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getAdvancedAjaxUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                store_url: $('#store_url').val(),
+                max_pages: $('#max_pages').val(),
+                get_results: true
+            },
+            showLoader: false,
+            success: function (response) {
+                setTimeout(function() {
+                    handleAnalysisResponse(response);
+                }, 500);
+            },
+            error: function (xhr, status, error) {
+                alert({
+                    title: $t('Error'),
+                    content: $t('An error occurred while fetching analysis results: ') + error
+                });
+            }
+        });
+    }
+        
+    // Function to handle analysis response - shared by all analysis methods
+    function handleAnalysisResponse(response) {
+        if (response.success) {
+            // Hide progress bar with some delay
+            setTimeout(function() {
+                hideProgressBar();
+            }, 1000);
+            
+            // Show results section
+            $('#url-analyzer-results').show();
+            
+            // Update URL count
+            $('#url-count').text('(' + response.urls.length + ')');
+            
+            // Update URL stats if available
+            if (response.stats) {
+                var statsHtml = $t('Total: %1 | JavaScript: %2 | CSS: %3 | Images: %4 | Fonts: %5 | Other: %6')
+                    .replace('%1', '<strong>' + response.stats.total + '</strong>')
+                    .replace('%2', '<strong>' + response.stats.js + '</strong>')
+                    .replace('%3', '<strong>' + response.stats.css + '</strong>')
+                    .replace('%4', '<strong>' + response.stats.images + '</strong>')
+                    .replace('%5', '<strong>' + response.stats.fonts + '</strong>')
+                    .replace('%6', '<strong>' + response.stats.other + '</strong>');
+                $('#url-stats').html(statsHtml);
+            }
+            
+            // Clear previous results
+            $('#url-analyzer-results .url-list').empty();
+            $('#upload-result').hide();
+            $('#upload-progress').hide();
+            
+            // Add each URL as a checkbox with file type indicator
+            if (response.urls && response.urls.length > 0) {
+                // Group URLs by type for better organization
+                var urlsByType = categorizeUrls(response.urls);
+                
+                // Create markup for each type
+                $.each(urlsByType, function(type, urls) {
+                    if (urls.length > 0) {
+                        var typeLabel = getTypeLabel(type);
+                        var typeIcon = getTypeIcon(type);
+                        
+                        var typeHeader = '<div class="url-type-header" data-type="' + type + '" style="padding: 8px; background: #f2f2f2; margin-top: 10px; cursor: pointer;">' +
+                            typeIcon + ' <strong>' + typeLabel + '</strong> <span class="count">(' + urls.length + ')</span>' +
+                            '<span class="toggle-indicator" style="float: right;">▼</span>' +
+                            '</div>';
+                        
+                        var urlItems = '<div class="url-type-items" data-type="' + type + '">';
+                        
+                        $.each(urls, function(index, url) {
+                            urlItems += '<div class="url-item" data-type="' + type + '" style="margin: 8px 0 8px 15px;">' +
+                                '<label style="display: block; cursor: pointer; overflow: hidden; text-overflow: ellipsis;">' +
+                                '<input type="checkbox" class="url-checkbox" value="' + url + '"> ' +
+                                '<span class="url-path" style="margin-left: 5px;">' + url + '</span>' +
+                                '</label>' +
+                                '</div>';
+                        });
+                        
+                        urlItems += '</div>';
+                        
+                        $('#url-analyzer-results .url-list').append(typeHeader + urlItems);
+                    }
+                });
+                
+                // Initialize filter functionality
+                initializeFilters();
+                
+                // Make type headers collapsible
+                $('.url-type-header').click(function() {
+                    var type = $(this).data('type');
+                    $('.url-type-items[data-type="' + type + '"]').toggle();
+                    $(this).find('.toggle-indicator').text(
+                        $('.url-type-items[data-type="' + type + '"]').is(':visible') ? '▼' : '►'
+                    );
+                });
+            } else {
+                $('#url-analyzer-results .url-list').html('<p>' + $t('No suitable URLs found.') + '</p>');
+            }
+        } else {
+            alert({
+                title: $t('Error'),
+                content: response.message
+            });
+            $('#url-analyzer-results').hide();
+            hideProgressBar();
+        }
+    }
+    
+    // Function to categorize URLs by type
+    function categorizeUrls(urls) {
+        var result = {
+            'js': [],
+            'css': [],
+            'images': [],
+            'fonts': [],
+            'other': []
+        };
+        
+        $.each(urls, function(index, url) {
+            var extension = url.split('.').pop().split('?')[0].toLowerCase();
+            
+            if (extension === 'js') {
+                result.js.push(url);
+            } else if (extension === 'css') {
+                result.css.push(url);
+            } else if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].indexOf(extension) !== -1) {
+                result.images.push(url);
+            } else if (['woff', 'woff2', 'ttf', 'eot', 'otf'].indexOf(extension) !== -1) {
+                result.fonts.push(url);
+            } else {
+                result.other.push(url);
+            }
+        });
+        
+        return result;
+    }
+    
+    // Function to get user-friendly type label
+    function getTypeLabel(type) {
+        switch (type) {
+            case 'js': return $t('JavaScript Files');
+            case 'css': return $t('CSS Files');
+            case 'images': return $t('Image Files');
+            case 'fonts': return $t('Font Files');
+            case 'other': return $t('Other Files');
+            default: return type;
+        }
+    }
+    
+    // Function to get icon for file type
+    function getTypeIcon(type) {
+        var icon = '';
+        switch (type) {
+            case 'js': 
+                icon = '<span style="color: #f0db4f; font-size: 16px;">⚙</span>';
+                break;
+            case 'css': 
+                icon = '<span style="color: #264de4; font-size: 16px;">📃</span>';
+                break;
+            case 'images': 
+                icon = '<span style="color: #ff9800; font-size: 16px;">🖼️</span>';
+                break;
+            case 'fonts': 
+                icon = '<span style="color: #607d8b; font-size: 16px;">🔠</span>';
+                break;
+            case 'other': 
+                icon = '<span style="color: #9e9e9e; font-size: 16px;">📄</span>';
+                break;
+        }
+        return icon;
+    }
+    
+    function preprocessPastedUrls(text) {
+        // Handle various input formats
+        if (!text) return '';
+        
+        // Split by space, comma or newline
+        let urls = text.split(/[\s,]+/);
+        
+        // Filter out empty entries and normalize
+        urls = urls.filter(url => url.trim().length > 0)
+                  .map(url => {
+                      // Check if it's a URL
+                      if (url.match(/^https?:\/\//i)) {
+                          return url.trim();
+                      }
+                      // Check if it starts with /static/ or /media/
+                      else if (url.match(/^\/?(static|media)\//i)) {
+                          return url.trim().replace(/^([^\/])/, '/$1'); // Ensure it starts with /
+                      }
+                      return url.trim();
+                  });
+        
+        // Join with newlines
+        return urls.join('\n');
+    }
+    
+    // Update the event handler to use this function
+    $('#pasted_urls').on('paste', function() {
+        // Use setTimeout to get the pasted content after the paste event completes
+        setTimeout(function() {
+            let pastedContent = $('#pasted_urls').val();
+            $('#pasted_urls').val(preprocessPastedUrls(pastedContent));
+        }, 100);
+    });
+    
+    // Initialize URL filtering functionality
+    function initializeFilters() {
+        $('#url-filter, #url-type-filter').on('input change', function() {
+            var searchText = $('#url-filter').val().toLowerCase();
+            var selectedType = $('#url-type-filter').val();
+            
+            var visibleCount = 0;
+            var totalCount = $('.url-item').length;
+            
+            // Show/hide URL items based on filters
+            $('.url-item').each(function() {
+                var urlText = $(this).find('.url-path').text().toLowerCase();
+                var urlType = $(this).data('type');
+                
+                var matchesSearch = searchText === '' || urlText.indexOf(searchText) !== -1;
+                var matchesType = selectedType === 'all' || (selectedType === urlType);
+                
+                if (matchesSearch && matchesType) {
+                    $(this).show();
+                    visibleCount++;
+                } else {
+                    $(this).hide();
+                }
+            });
+            
+            // Update headers visibility based on their children
+            $('.url-type-header').each(function() {
+                var type = $(this).data('type');
+                var hasVisibleItems = $('.url-item[data-type="' + type + '"]:visible').length > 0;
+                
+                if (hasVisibleItems) {
+                    $(this).show();
+                } else {
+                    $(this).hide();
+                }
+            });
+            
+            // Update filter status
+            $('.filter-status').text(
+                $t('Showing %1 of %2 URLs').replace('%1', visibleCount).replace('%2', totalCount)
+            );
+        });
+    }
+    
+    // Reset the results panel
+    function resetResults() {
+        $('#url-analyzer-results .url-list').empty();
+        $('#upload-result').hide();
+        $('#upload-progress').hide();
+        $('.filter-status').text('');
+        $('#url-count').text('');
+        $('#url-filter').val('');
+        $('#url-type-filter').val('all');
+        $('#url-stats').empty();
+    }
+    
+    // Show progress bar
+    function showProgressBar(title, status, percent) {
+        $('#analyzer-progress').show();
+        $('#progress-title').text(title);
+        updateProgress(status, percent);
+    }
+    
+    // Hide progress bar
+    function hideProgressBar() {
+        $('#analyzer-progress').fadeOut(500);
+    }
+    
+    // Update progress
+    function updateProgress(status, percent, detail) {
+        $('#progress-status').text(status);
+        $('#progress-bar').css('width', percent + '%').text(percent + '%');
+        
+        if (detail) {
+            $('#progress-detail').text(detail);
+        }
+        
+        // Change color based on status
+        if (status === 'Error' || status === 'Failed') {
+            $('#progress-bar').css('background-color', '#d9534f');
+        } else if (percent >= 100) {
+            $('#progress-bar').css('background-color', '#5cb85c');
+        } else {
+            $('#progress-bar').css('background-color', '#5bc0de');
+        }
+    }
+    
+    // Select All button
+    $(document).on('click', '#select-all-urls', function(e) {
+        e.preventDefault();
+        var visibleCheckboxes = $('.url-item:visible input[type="checkbox"]');
+        
+        if (visibleCheckboxes.length > 0) {
+            visibleCheckboxes.prop('checked', true);
+        } else {
+            alert({
+                title: $t('Information'),
+                content: $t('No visible URLs to select. Please adjust your filters.')
+            });
+        }
+        return false;
+    });
+    
+    // Add Selected URLs button
+    $(document).on('click', '#add-selected-urls', function(e) {
+        e.preventDefault();
+        var selectedUrls = [];
+        $('.url-item input[type="checkbox"]:checked').each(function() {
+            selectedUrls.push($(this).val());
+        });
+        
+        if (selectedUrls.length > 0) {
+            // Get current textarea content
+            var currentUrls = $('#magoarab_cdn_custom_urls_custom_url_list').val();
+            
+            // Add new URLs (ensure no duplicates)
+            var existingUrls = currentUrls ? currentUrls.split("\n") : [];
+            var newUrls = [];
+            
+            selectedUrls.forEach(function(url) {
+                if (existingUrls.indexOf(url) === -1) {
+                    newUrls.push(url);
+                }
+            });
+            
+            if (newUrls.length > 0) {
+                var updatedUrls = currentUrls ? currentUrls + "\n" + newUrls.join("\n") : newUrls.join("\n");
+                
+               // Update textarea
+                $('#magoarab_cdn_custom_urls_custom_url_list').val(updatedUrls);
+                
+                alert({
+                    title: $t('Success'),
+                    content: $t('Added %1 URLs to the custom URL list.').replace('%1', newUrls.length)
+                });
+            } else {
+                alert({
+                    title: $t('Information'),
+                    content: $t('All selected URLs are already in the custom URL list.')
+                });
+            }
+        } else {
+            alert({
+                title: $t('Information'),
+                content: $t('Please select at least one URL.')
+            });
+        }
+        return false;
+    });
+    
+    // Upload to GitHub button
+    $(document).on('click', '#upload-to-github', function(e) {
+        e.preventDefault();
+        
+        var selectedUrls = [];
+        $('.url-item input[type="checkbox"]:checked').each(function() {
+            selectedUrls.push($(this).val());
+        });
+        
+        if (selectedUrls.length > 0) {
+            // Show confirmation dialog
+            confirm({
+                title: $t('Confirm Upload'),
+                content: $t('Do you want to upload %1 selected files to GitHub?').replace('%1', selectedUrls.length),
+                actions: {
+                    confirm: function() {
+                        performUpload(selectedUrls);
+                    }
+                }
+            });
+        } else {
+            alert({
+                title: $t('Information'),
+                content: $t('Please select at least one URL to upload.')
+            });
+        }
+        return false;
+    });
+    
+    function performUpload(selectedUrls) {
+        // Disable button and show progress
+        $('#upload-to-github').prop('disabled', true);
+        $('#upload-to-github').text($t('Uploading...'));
+        
+        // Show progress indicator
+        $('#upload-progress').show();
+        $('#upload-progress .progress-status').text($t('Preparing to upload %1 files...').replace('%1', selectedUrls.length));
+        $('#upload-progress .progress-bar').css('width', '0%');
+        
+        // Create batch chunks for better performance and UX
+        var batchSize = 5;
+        var totalBatches = Math.ceil(selectedUrls.length / batchSize);
+        var batches = [];
+        
+        for (var i = 0; i < selectedUrls.length; i += batchSize) {
+            batches.push(selectedUrls.slice(i, i + batchSize));
+        }
+        
+        var results = {
+            total: selectedUrls.length,
+            success: 0,
+            failed: 0,
+            details: []
+        };
+        
+        // Process first batch 
+        processBatch(batches, 0, totalBatches, results);
+    }
+    
+    function processBatch(batches, batchIndex, totalBatches, results) {
+        if (batchIndex >= batches.length) {
+            // All batches completed
+            finishUpload(results);
+            return;
+        }
+        
+        var batch = batches[batchIndex];
+        var currentBatchNumber = batchIndex + 1;
+        
+        // Update progress
+        var progress = Math.floor((currentBatchNumber / totalBatches) * 100);
+        $('#upload-progress .progress-bar').css('width', progress + '%');
+        $('#upload-progress .progress-status').text(
+            $t('Uploading batch %1 of %2 (%3%)').replace(
+                '%1', currentBatchNumber
+            ).replace(
+                '%2', totalBatches
+            ).replace(
+                '%3', progress
+            )
+        );
+        
+        // Upload this batch
+        $.ajax({
+            url: '<?= $block->escapeJs($block->getUploadUrl()) ?>',
+            type: 'POST',
+            dataType: 'json',
+            data: {
+                form_key: window.FORM_KEY,
+                urls: JSON.stringify(batch)
+            },
+            success: function(response) {
+                if (response.success && response.results) {
+                    // Merge batch results with overall results
+                    results.success += response.results.success || 0;
+                    results.failed += response.results.failed || 0;
+                    
+                    if (response.results.details) {
+                        results.details = results.details.concat(response.results.details);
+                    }
+                    
+                    // Process next batch
+                    processBatch(batches, batchIndex + 1, totalBatches, results);
+                } else {
+                    // Error, but try to continue with next batch
+                    console.error('Batch upload error:', response.message);
+                    
+                    // Mark all files in this batch as failed
+                    batch.forEach(function(url) {
+                        results.failed++;
+                        results.details.push({
+                            url: url,
+                            success: false,
+                            message: response.message || $t('Upload failed')
+                        });
+                    });
+                    
+                    // Process next batch
+                    processBatch(batches, batchIndex + 1, totalBatches, results);
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('Batch upload ajax error:', error);
+                
+                // Mark all files in this batch as failed
+                batch.forEach(function(url) {
+                    results.failed++;
+                    results.details.push({
+                        url: url,
+                        success: false,
+                        message: error || $t('Connection error')
+                    });
+                });
+                
+                // Process next batch
+                processBatch(batches, batchIndex + 1, totalBatches, results);
+            }
+        });
+    }
+    
+    function finishUpload(results) {
+        // Update progress to 100%
+        $('#upload-progress .progress-bar').css('width', '100%');
+        $('#upload-progress .progress-status').text(
+            $t('Upload complete: %1 successful, %2 failed').replace(
+                '%1', results.success
+            ).replace(
+                '%2', results.failed
+            )
+        );
+        
+        // Re-enable upload button
+        $('#upload-to-github').prop('disabled', false);
+        $('#upload-to-github').text($t('Upload to GitHub'));
+        
+        // Show detailed results
+        var resultHtml = '<div class="upload-summary">';
+        
+        if (results.failed > 0) {
+            resultHtml += '<div class="message warning" style="margin-bottom:15px;background:#fdf0d5;padding:12px;border-left:3px solid #ff9800;">' + 
+                $t('Upload completed with issues: %1 successful, %2 failed, %3 total.').replace(
+                    '%1', '<strong>' + results.success + '</strong>'
+                ).replace(
+                    '%2', '<strong>' + results.failed + '</strong>'
+                ).replace(
+                    '%3', '<strong>' + results.total + '</strong>'
+                ) + 
+                '</div>';
+        } else {
+            resultHtml += '<div class="message success" style="margin-bottom:15px;background:#e8f5e9;padding:12px;border-left:3px solid #4caf50;">' + 
+                $t('All %1 files were successfully uploaded to GitHub.').replace(
+                    '%1', '<strong>' + results.success + '</strong>'
+                ) + 
+                '</div>';
+        }
+        
+        // Group results by status for better UI
+        var successfulUrls = [];
+        var failedUrls = [];
+        
+        results.details.forEach(function(detail) {
+            if (detail.success) {
+                successfulUrls.push(detail);
+            } else {
+                failedUrls.push(detail);
+            }
+        });
+        
+        // Add collapsible results sections
+        if (successfulUrls.length > 0) {
+            resultHtml += '<div class="successful-uploads" style="margin-bottom:15px;">' +
+                '<h4 style="margin-bottom:10px;cursor:pointer;color:#4caf50;" onclick="jQuery(\'.successful-list\').toggle();">' + 
+                $t('Successfully Uploaded Files (%1)', successfulUrls.length) + 
+                ' <span style="font-size:12px;color:#888;">' + $t('(click to toggle)') + '</span></h4>' +
+                '<div class="successful-list" style="display:none;max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;">';
+            
+            successfulUrls.forEach(function(detail) {
+                resultHtml += '<div style="margin:5px 0;color:#4caf50;"><span style="margin-right:5px;">✓</span>' + detail.url + '</div>';
+            });
+            
+            resultHtml += '</div></div>';
+        }
+        
+        if (failedUrls.length > 0) {
+            resultHtml += '<div class="failed-uploads" style="margin-bottom:15px;">' +
+                '<h4 style="margin-bottom:10px;cursor:pointer;color:#f44336;" onclick="jQuery(\'.failed-list\').toggle();">' + 
+                $t('Failed Uploads (%1)', failedUrls.length) + 
+                ' <span style="font-size:12px;color:#888;">' + $t('(click to toggle)') + '</span></h4>' +
+                '<div class="failed-list" style="max-height:200px;overflow-y:auto;border:1px solid #eee;padding:10px;">';
+            
+            failedUrls.forEach(function(detail) {
+                resultHtml += '<div style="margin:5px 0;color:#f44336;"><span style="margin-right:5px;">✗</span>' + 
+                    detail.url + ' - ' + (detail.message || $t('Unknown error')) + '</div>';
+            });
+            
+            resultHtml += '</div></div>';
+        }
+        
+        resultHtml += '</div>';
+        
+        $('#upload-result').html(resultHtml).show();
+        
+        // Ask user if they want to add URLs to custom list
+        if (results.success > 0) {
+            confirm({
+                title: $t('Upload Successful'),
+                content: $t('Do you want to add successfully uploaded URLs to your custom URL list?'),
+                actions: {
+                    confirm: function() {
+                        // Get successful URLs
+                        var urlsToAdd = successfulUrls.map(function(detail) {
+                            return detail.url;
+                        });
+                        
+                        // Add URLs to custom list
+                        var currentUrls = $('#magoarab_cdn_custom_urls_custom_url_list').val();
+                        
+                        // Add new URLs (ensure no duplicates)
+                        var existingUrls = currentUrls ? currentUrls.split("\n") : [];
+                        var newUrls = [];
+                        
+                        urlsToAdd.forEach(function(url) {
+                            if (existingUrls.indexOf(url) === -1) {
+                                newUrls.push(url);
+                            }
+                        });
+                        
+                        if (newUrls.length > 0) {
+                            var updatedUrls = currentUrls ? currentUrls + "\n" + newUrls.join("\n") : newUrls.join("\n");
+                            
+                            // Update textarea
+                            $('#magoarab_cdn_custom_urls_custom_url_list').val(updatedUrls);
+                            
+                            alert({
+                                title: $t('Success'),
+                                content: $t('Added %1 URLs to custom list.').replace('%1', newUrls.length)
+                            });
+                        } else {
+                            alert({
+                                title: $t('Information'),
+                                content: $t('All URLs are already in your custom list.')
+                            });
+                        }
+                    }
+                }
+            });
+        }
+    }
+});
+</script>

@@ -1,0 +1,54 @@
+<?php
+/**
+ * @var $block \MagoArab\CdnIntegration\Block\CdnConfig
+ */
+?>
+<?php if ($block->getConfig()['enabled']): ?>
+<script type="text/javascript">
+    require([
+        'magoarabCdn',
+        'magoarabCdnRequireJs'
+    ], function (cdnHelper, requireJsHandler) {
+        cdnHelper(<?= /* @noEscape */ json_encode($block->getConfig()) ?>);
+        requireJsHandler(<?= /* @noEscape */ json_encode($block->getConfig()) ?>);
+    });
+</script>
+<script>
+// Immediate execution patch for RequireJS
+(function() {
+    var cdnBaseUrl = <?= /* @noEscape */ json_encode($block->getConfig()['cdnBaseUrl']) ?>;
+    
+    if (!cdnBaseUrl) {
+        return;
+    }
+    
+    // Patch for script tags that might be added dynamically
+    var originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+        var element = originalCreateElement.apply(document, arguments);
+        
+        if (tagName.toLowerCase() === 'script') {
+            var originalSetAttribute = element.setAttribute;
+            element.setAttribute = function(name, value) {
+                if (name === 'src' && value && (value.indexOf('/static/') === 0 || value.indexOf('/media/') === 0)) {
+                    var cdnPath = '';
+                    if (value.indexOf('/static/') === 0) {
+                        cdnPath = value.substring(8); // Remove '/static/'
+                    } else if (value.indexOf('/media/') === 0) {
+                        cdnPath = value.substring(7); // Remove '/media/'
+                    }
+                    
+                    if (cdnPath) {
+                        value = cdnBaseUrl.replace(/\/$/, '') + '/' + cdnPath.replace(/^\//, '');
+                    }
+                }
+                
+                return originalSetAttribute.call(this, name, value);
+            };
+        }
+        
+        return element;
+    };
+})();
+</script>
+<?php endif; ?>

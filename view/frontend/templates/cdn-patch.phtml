@@ -1,0 +1,120 @@
+<?php
+/**
+ * @var $block \Magento\Framework\View\Element\Template
+ * @var $helper \MagoArab\CdnIntegration\Helper\Data
+ */
+$helper = $this->helper('MagoArab\CdnIntegration\Helper\Data');
+$cdnBaseUrl = $helper->getCdnBaseUrl();
+$customUrls = $helper->getCustomUrls();
+?>
+
+<?php if ($helper->isEnabled() && !empty($cdnBaseUrl)): ?>
+<script type="text/javascript">
+(function() {
+    var cdnBaseUrl = '<?= $block->escapeJs($cdnBaseUrl) ?>';
+    var customUrls = <?= json_encode($customUrls) ?>;
+    var replacedUrls = {};
+    
+    // Function to convert URL to CDN URL
+    function convertToCdnUrl(url) {
+        if (typeof url !== 'string' || replacedUrls[url]) {
+            return url;
+        }
+        
+        // Check if URL is in custom URLs list
+        var isCustomUrl = false;
+        for (var i = 0; i < customUrls.length; i++) {
+            if (url === customUrls[i] || url.indexOf(customUrls[i]) !== -1) {
+                isCustomUrl = true;
+                break;
+            }
+        }
+        
+        if (isCustomUrl || url.indexOf('/static/') === 0 || url.indexOf('/media/') === 0) {
+            var cdnPath = '';
+            if (url.indexOf('/static/') === 0) {
+                cdnPath = url.substring(8); // Remove '/static/'
+            } else if (url.indexOf('/media/') === 0) {
+                cdnPath = url.substring(7); // Remove '/media/'
+            }
+            
+            if (cdnPath) {
+                var newUrl = cdnBaseUrl.replace(/\/$/, '') + '/' + cdnPath.replace(/^\//, '');
+                replacedUrls[url] = newUrl;
+                console.log('CDN URL Replacement:', url, '->', newUrl);
+                return newUrl;
+            }
+        }
+        
+        return url;
+    }
+    
+    // Patch RequireJS
+    if (window.require && window.require.config) {
+        var originalRequireConfig = window.require.config;
+        window.require.config = function(config) {
+            if (config && config.paths) {
+                for (var key in config.paths) {
+                    var path = config.paths[key];
+                    if (typeof path === 'string') {
+                        config.paths[key] = convertToCdnUrl(path);
+                    }
+                }
+            }
+            return originalRequireConfig.call(window.require, config);
+        };
+    }
+    
+    if (window.require && window.require.load) {
+        var originalLoad = window.require.load;
+        window.require.load = function (context, moduleId, url) {
+            return originalLoad.call(window.require, context, moduleId, convertToCdnUrl(url));
+        };
+    }
+    
+    // Apply to existing script and link elements
+    function replaceUrlsInTags() {
+        // Process script elements
+        var scripts = document.querySelectorAll('script[src]');
+        for (var i = 0; i < scripts.length; i++) {
+            var src = scripts[i].getAttribute('src');
+            var newSrc = convertToCdnUrl(src);
+            if (src !== newSrc) {
+                scripts[i].setAttribute('src', newSrc);
+            }
+        }
+        
+        // Process link elements
+        var links = document.querySelectorAll('link[href]');
+        for (var j = 0; j < links.length; j++) {
+            var href = links[j].getAttribute('href');
+            var newHref = convertToCdnUrl(href);
+            if (href !== newHref) {
+                links[j].setAttribute('href', newHref);
+            }
+        }
+    }
+    
+    // Apply when the document loads
+    document.addEventListener('DOMContentLoaded', replaceUrlsInTags);
+    
+    // Patch element creation
+    var originalCreateElement = document.createElement;
+    document.createElement = function(tagName) {
+        var element = originalCreateElement.call(document, tagName);
+        
+        if (tagName.toLowerCase() === 'script' || tagName.toLowerCase() === 'link') {
+            var originalSetAttribute = element.setAttribute;
+            element.setAttribute = function(name, value) {
+                if ((name === 'src' || name === 'href') && typeof value === 'string') {
+                    value = convertToCdnUrl(value);
+                }
+                return originalSetAttribute.call(this, name, value);
+            };
+        }
+        
+        return element;
+    };
+})();
+</script>
+<?php endif; ?>
